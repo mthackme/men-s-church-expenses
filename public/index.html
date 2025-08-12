@@ -62,28 +62,29 @@
         <button onclick="recordFullPayment()" style="background-color: #27ae60;">Full Year Payment</button>
     </div>
 
-    <table id="contributionTable">
-        <thead>
-            <tr>
-                <th>Member Name</th>
-                <th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th><th>Jun</th>
-                <th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th>
-                <th>Total Paid</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody id="tableBody"></tbody>
-    </table>
+    <div id="captureArea"> <table id="contributionTable">
+            <thead>
+                <tr>
+                    <th>Member Name</th>
+                    <th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th><th>Jun</th>
+                    <th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th>
+                    <th>Total Paid</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
 
-    <div class="summary">
-        <h3>Financial Summary</h3>
-        <div class="summary-item"><strong>Opening Balance</strong>₱<span id="summaryOpeningBalance">0</span></div>
-        <div class="summary-item"><strong>Total Collected</strong>₱<span id="totalCollected">0</span></div>
-        <div class="summary-item"><strong>Total Members</strong><span id="totalMembers">0</span></div>
-        <div class="summary-item"><strong>Total Expenses</strong>₱<span id="totalExpenses">0</span></div>
-        <div class="summary-item" style="background-color: #d4edda; font-weight: bold;"><strong>Net Balance</strong>₱<span id="netBalance">0</span></div>
-        <div class="summary-item"><strong>Expected Total</strong>₱<span id="expectedTotal">0</span></div>
-        <div class="summary-item"><strong>Collection Rate</strong><span id="collectionRate">0%</span></div>
+        <div class="summary">
+            <h3>Financial Summary</h3>
+            <div class="summary-item"><strong>Opening Balance</strong>₱<span id="summaryOpeningBalance">0</span></div>
+            <div class="summary-item"><strong>Total Collected</strong>₱<span id="totalCollected">0</span></div>
+            <div class="summary-item"><strong>Total Members</strong><span id="totalMembers">0</span></div>
+            <div class="summary-item"><strong>Total Expenses</strong>₱<span id="totalExpenses">0</span></div>
+            <div class="summary-item" style="background-color: #d4edda; font-weight: bold;"><strong>Net Balance</strong>₱<span id="netBalance">0</span></div>
+            <div class="summary-item"><strong>Expected Total</strong>₱<span id="expectedTotal">0</span></div>
+            <div class="summary-item"><strong>Collection Rate</strong><span id="collectionRate">0%</span></div>
+        </div>
     </div>
 
     <div class="controls" style="margin-top: 20px;">
@@ -130,12 +131,11 @@
         // 4. App's state (local cache of data from Firebase)
         let members = {};
         let expenses = [];
-        let openingBalance = 0; // NEW: Variable for the opening balance
+        let openingBalance = 0;
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         
         // --- DATA FUNCTIONS ---
 
-        // NEW FUNCTION: Set the opening balance
         window.setOpeningBalance = async function() {
             const balanceInput = document.getElementById('openingBalance');
             const newBalance = parseFloat(balanceInput.value);
@@ -143,17 +143,13 @@
                 return alert("Please enter a valid, non-negative number for the balance.");
             }
             try {
-                // We use a specific document 'main' in a 'settings' collection to store this single value
                 const settingsRef = doc(db, "settings", "main");
                 await setDoc(settingsRef, { openingBalance: newBalance });
                 openingBalance = newBalance;
                 updateDisplay();
                 alert(`Opening balance has been set to ₱${newBalance.toLocaleString()}`);
                 balanceInput.value = '';
-            } catch (e) {
-                console.error("Error setting opening balance: ", e);
-                alert("Could not set the balance.");
-            }
+            } catch (e) { console.error("Error setting opening balance: ", e); }
         }
 
         window.addMember = async function() {
@@ -298,7 +294,6 @@
             
             const totalMembers = Object.keys(members).length;
             const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-            // MODIFIED: Net Balance now includes the opening balance
             const netBalance = (openingBalance + totalCollected) - totalExpenses;
             const expectedTotal = totalMembers * 1200;
             
@@ -335,14 +330,9 @@
         async function loadAllData() {
             document.body.style.cursor = 'wait';
             try {
-                // MODIFIED: Fetch members, expenses, and the opening balance
                 const settingsRef = doc(db, "settings", "main");
                 const settingsSnap = await getDoc(settingsRef);
-                if (settingsSnap.exists()) {
-                    openingBalance = settingsSnap.data().openingBalance || 0;
-                } else {
-                    openingBalance = 0;
-                }
+                openingBalance = settingsSnap.exists() ? settingsSnap.data().openingBalance || 0 : 0;
 
                 const membersQuery = query(collection(db, "members"));
                 const memberSnapshot = await getDocs(membersQuery);
@@ -393,9 +383,76 @@
         populateYearSelect();
         loadAllData();
         
-        window.exportToCSV = function() { alert('CSV Export function needs to be fully implemented.'); };
-        window.exportToImage = function() { alert('Image Export function needs to be fully implemented.'); };
-        window.exportSummaryReport = function() { alert('Summary Export function needs to be fully implemented.'); };
+        // --- EXPORT FUNCTIONS ---
+        window.exportToCSV = function() {
+            const year = document.getElementById('yearSelect').value;
+            const paymentKey = `payments_${year}`;
+            let csvContent = "Member Name,Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec,Total Paid\n";
+            Object.keys(members).sort().forEach(name => {
+                let row = `"${name}"`;
+                let total = 0;
+                const paymentData = members[name][paymentKey] || Array(12).fill(false);
+                for (let i = 0; i < 12; i++) {
+                    const paid = paymentData[i];
+                    row += `,${paid ? '100' : '0'}`;
+                    if (paid) total += 100;
+                }
+                row += `,${total}\n`;
+                csvContent += row;
+            });
+            csvContent += "\n\nExpense Date,Description,Amount\n";
+            expenses.forEach(expense => {
+                csvContent += `${expense.date},"${expense.description}",${expense.amount}\n`;
+            });
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.setAttribute("href", URL.createObjectURL(blob));
+            link.setAttribute("download", `contributions_${year}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        window.exportToImage = function() {
+            const reportElement = document.getElementById('captureArea');
+            html2canvas(reportElement, { scale: 2 }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `contribution_report_${new Date().toISOString().slice(0, 10)}.png`;
+                link.href = canvas.toDataURL("image/png");
+                link.click();
+            }).catch(err => { console.error("Image export failed:", err); });
+        }
+
+        window.exportSummaryReport = function() {
+            const year = document.getElementById('yearSelect').value;
+            const currentDate = new Date().toLocaleDateString('en-PH');
+            let report = `MEN'S CHURCH MINISTRY - FINANCIAL REPORT\n`;
+            report += `Generated on: ${currentDate}\nReport for Year: ${year}\n${'='.repeat(50)}\n\n`;
+            report += `FINANCIAL SUMMARY\n-----------------\n`;
+            report += `Opening Balance: ₱${document.getElementById('summaryOpeningBalance').textContent}\n`;
+            report += `Total Collected from Contributions: ₱${document.getElementById('totalCollected').textContent}\n`;
+            report += `Total Expenses: ₱${document.getElementById('totalExpenses').textContent}\n`;
+            report += `Net Balance: ₱${document.getElementById('netBalance').textContent}\n`;
+            report += `Total Members: ${document.getElementById('totalMembers').textContent}\n\n`;
+            report += `MEMBER CONTRIBUTIONS\n--------------------\n`;
+            const paymentKey = `payments_${year}`;
+            Object.keys(members).sort().forEach(name => {
+                const paymentData = members[name][paymentKey] || Array(12).fill(false);
+                const monthsPaid = paymentData.filter(p => p).length;
+                report += `${name}: ${monthsPaid}/12 months paid (₱${monthsPaid * 100})\n`;
+            });
+            report += `\nEXPENSE DETAILS\n---------------\n`;
+            if (expenses.length === 0) { report += "No expenses recorded.\n"; } 
+            else { expenses.forEach(expense => { report += `${expense.date} - "${expense.description}": ₱${expense.amount.toFixed(2)}\n`; }); }
+            const blob = new Blob([report], { type: 'text/plain;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.setAttribute("href", URL.createObjectURL(blob));
+            link.setAttribute("download", `summary_report_${year}.txt`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
         window.recordFullPayment = async function() {
             const memberId = document.getElementById('memberSelect').value;
             const year = document.getElementById('yearSelect').value;
