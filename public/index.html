@@ -466,9 +466,9 @@
                         <table style="width: 100%; border-collapse: collapse; font-size: 18px;">
                             <thead>
                                 <tr style="background: #34495e; color: white;">
-                                    <th style="padding: 15px; text-align: left; font-size: 20px;">Member Name</th>
-                                    <th style="padding: 15px; text-align: center; font-size: 20px;">Months Paid</th>
-                                    <th style="padding: 15px; text-align: right; font-size: 20px;">Total Paid</th>
+                                    <th style="padding: 15px; text-align: left; font-size: 20px; width: 50%;">Member Name</th>
+                                    <th style="padding: 15px; text-align: center; font-size: 20px; width: 25%;">Months Paid</th>
+                                    <th style="padding: 15px; text-align: right; font-size: 20px; width: 25%;">Total Paid</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -486,9 +486,9 @@
                 
                 exportHTML += `
                     <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 12px;">${name}</td>
-                        <td style="padding: 12px; text-align: center;">${monthsPaid}/12</td>
-                        <td style="padding: 12px; text-align: right; font-weight: bold;">₱${totalPaid}</td>
+                        <td style="padding: 12px 15px; width: 50%;">${name}</td>
+                        <td style="padding: 12px 15px; text-align: center; width: 25%;">${monthsPaid}/12</td>
+                        <td style="padding: 12px 15px; text-align: right; font-weight: bold; width: 25%;">₱${totalPaid.toLocaleString()}</td>
                     </tr>
                 `;
             });
@@ -507,9 +507,9 @@
                         <table style="width: 100%; border-collapse: collapse; font-size: 18px;">
                             <thead>
                                 <tr style="background: #c0392b; color: white;">
-                                    <th style="padding: 15px; text-align: left; font-size: 20px;">Date</th>
-                                    <th style="padding: 15px; text-align: left; font-size: 20px;">Description</th>
-                                    <th style="padding: 15px; text-align: right; font-size: 20px;">Amount</th>
+                                    <th style="padding: 15px; text-align: left; font-size: 20px; width: 25%;">Date</th>
+                                    <th style="padding: 15px; text-align: left; font-size: 20px; width: 50%;">Description</th>
+                                    <th style="padding: 15px; text-align: right; font-size: 20px; width: 25%;">Amount</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -518,9 +518,9 @@
                 expenses.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(expense => {
                     exportHTML += `
                         <tr style="border-bottom: 1px solid #ddd;">
-                            <td style="padding: 12px;">${new Date(expense.date).toLocaleDateString('en-PH')}</td>
-                            <td style="padding: 12px;">${expense.description}</td>
-                            <td style="padding: 12px; text-align: right; font-weight: bold;">₱${expense.amount.toFixed(2)}</td>
+                            <td style="padding: 12px 15px; width: 25%;">${new Date(expense.date).toLocaleDateString('en-PH')}</td>
+                            <td style="padding: 12px 15px; width: 50%;">${expense.description}</td>
+                            <td style="padding: 12px 15px; text-align: right; font-weight: bold; width: 25%;">₱${expense.amount.toFixed(2)}</td>
                         </tr>
                     `;
                 });
