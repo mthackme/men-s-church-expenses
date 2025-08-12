@@ -81,7 +81,7 @@
             <div class="summary-item"><strong>Total Collected</strong>₱<span id="totalCollected">0</span></div>
             <div class="summary-item"><strong>Total Members</strong><span id="totalMembers">0</span></div>
             <div class="summary-item"><strong>Total Expenses</strong>₱<span id="totalExpenses">0</span></div>
-            <div class="summary-item" style="background-color: #d4edda; font-weight: bold;"><strong>Net Balance</strong>₱<span id="netBalance">0</span></div>
+            <div class="summary-item" style="background-color: #d4edda; font-weight: bold;"><strong>Total Contribution</strong>₱<span id="totalContribution">0</span></div>
             <div class="summary-item"><strong>Expected Total</strong>₱<span id="expectedTotal">0</span></div>
             <div class="summary-item"><strong>Collection Rate</strong><span id="collectionRate">0%</span></div>
         </div>
@@ -294,14 +294,14 @@
             
             const totalMembers = Object.keys(members).length;
             const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-            const netBalance = (openingBalance + totalCollected) - totalExpenses;
+            const totalContribution = (openingBalance + totalCollected) - totalExpenses;
             const expectedTotal = totalMembers * 1200;
             
             document.getElementById('summaryOpeningBalance').textContent = openingBalance.toLocaleString();
             document.getElementById('totalMembers').textContent = totalMembers;
             document.getElementById('totalCollected').textContent = totalCollected.toLocaleString();
             document.getElementById('totalExpenses').textContent = totalExpenses.toFixed(2);
-            document.getElementById('netBalance').textContent = netBalance.toFixed(2);
+            document.getElementById('totalContribution').textContent = totalContribution.toFixed(2);
             document.getElementById('expectedTotal').textContent = expectedTotal.toLocaleString();
             const rate = expectedTotal > 0 ? ((totalCollected / expectedTotal) * 100).toFixed(1) : 0;
             document.getElementById('collectionRate').textContent = rate + '%';
@@ -400,6 +400,15 @@
                 row += `,${total}\n`;
                 csvContent += row;
             });
+            
+            // Add summary section
+            csvContent += "\n\nSUMMARY\n";
+            csvContent += `Total Members,${document.getElementById('totalMembers').textContent}\n`;
+            csvContent += `Opening Balance,${document.getElementById('summaryOpeningBalance').textContent}\n`;
+            csvContent += `Total Collected,${document.getElementById('totalCollected').textContent}\n`;
+            csvContent += `Total Expenses,${document.getElementById('totalExpenses').textContent}\n`;
+            csvContent += `Total Contribution,${document.getElementById('totalContribution').textContent}\n`;
+            
             csvContent += "\n\nExpense Date,Description,Amount\n";
             expenses.forEach(expense => {
                 csvContent += `${expense.date},"${expense.description}",${expense.amount}\n`;
@@ -414,60 +423,133 @@
         }
 
         window.exportToImage = function() {
-            const reportElement = document.getElementById('captureArea');
-            html2canvas(reportElement, { scale: 2 }).then(canvas => {
-                const link = document.createElement('a');
-                link.download = `contribution_report_${new Date().toISOString().slice(0, 10)}.png`;
-                link.href = canvas.toDataURL("image/png");
-                link.click();
-            }).catch(err => { console.error("Image export failed:", err); });
-        }
-
-        window.exportSummaryReport = function() {
-            const year = document.getElementById('yearSelect').value;
-            const currentDate = new Date().toLocaleDateString('en-PH');
-            let report = `MEN'S CHURCH MINISTRY - FINANCIAL REPORT\n`;
-            report += `Generated on: ${currentDate}\nReport for Year: ${year}\n${'='.repeat(50)}\n\n`;
-            report += `FINANCIAL SUMMARY\n-----------------\n`;
-            report += `Opening Balance: ₱${document.getElementById('summaryOpeningBalance').textContent}\n`;
-            report += `Total Collected from Contributions: ₱${document.getElementById('totalCollected').textContent}\n`;
-            report += `Total Expenses: ₱${document.getElementById('totalExpenses').textContent}\n`;
-            report += `Net Balance: ₱${document.getElementById('netBalance').textContent}\n`;
-            report += `Total Members: ${document.getElementById('totalMembers').textContent}\n\n`;
-            report += `MEMBER CONTRIBUTIONS\n--------------------\n`;
-            const paymentKey = `payments_${year}`;
+            // Create a custom div for export
+            const exportDiv = document.createElement('div');
+            exportDiv.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; background: white; padding: 40px; z-index: 10000;';
+            
+            // Get current data
+            const currentYear = document.getElementById('yearSelect').value;
+            const currentDate = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+            
+            // Build the export content
+            let exportHTML = `
+                <div style="max-width: 800px; margin: 0 auto; font-family: Arial, sans-serif;">
+                    <div style="text-align: center; background: #2c3e50; color: white; padding: 20px; border-radius: 10px; margin-bottom: 30px;">
+                        <h1 style="margin: 0;">Men's Church Ministry</h1>
+                        <h3 style="margin: 10px 0 0 0;">Financial Report - ${currentDate}</h3>
+                    </div>
+                    
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                        <h2 style="color: #2c3e50; margin-top: 0;">Financial Summary</h2>
+                        <table style="width: 100%; font-size: 16px;">
+                            <tr>
+                                <td style="padding: 8px 0;"><strong>Opening Balance:</strong></td>
+                                <td style="text-align: right;">₱${document.getElementById('summaryOpeningBalance').textContent}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0;"><strong>Total Members:</strong></td>
+                                <td style="text-align: right;">${document.getElementById('totalMembers').textContent}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0;"><strong>Total Collected:</strong></td>
+                                <td style="text-align: right; color: #27ae60; font-weight: bold;">₱${document.getElementById('totalCollected').textContent}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0;"><strong>Total Expenses:</strong></td>
+                                <td style="text-align: right; color: #e74c3c; font-weight: bold;">₱${document.getElementById('totalExpenses').textContent}</td>
+                            </tr>
+                            <tr style="border-top: 2px solid #34495e;">
+                                <td style="padding: 8px 0;"><strong>Total Contribution:</strong></td>
+                                <td style="text-align: right; font-weight: bold; font-size: 18px; color: #27ae60;">₱${document.getElementById('totalContribution').textContent}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                        <h2 style="color: #2c3e50; margin-top: 0;">Member Contributions for ${currentYear}</h2>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: #34495e; color: white;">
+                                    <th style="padding: 10px; text-align: left;">Member Name</th>
+                                    <th style="padding: 10px; text-align: center;">Months Paid</th>
+                                    <th style="padding: 10px; text-align: right;">Total Paid</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+            
+            // Add member payment data
+            const paymentKey = `payments_${currentYear}`;
             Object.keys(members).sort().forEach(name => {
+                let monthsPaid = 0;
                 const paymentData = members[name][paymentKey] || Array(12).fill(false);
-                const monthsPaid = paymentData.filter(p => p).length;
-                report += `${name}: ${monthsPaid}/12 months paid (₱${monthsPaid * 100})\n`;
+                for (let i = 0; i < 12; i++) {
+                    if (paymentData[i]) monthsPaid++;
+                }
+                const totalPaid = monthsPaid * 100;
+                
+                exportHTML += `
+                    <tr style="border-bottom: 1px solid #ddd;">
+                        <td style="padding: 10px;">${name}</td>
+                        <td style="padding: 10px; text-align: center;">${monthsPaid}/12</td>
+                        <td style="padding: 10px; text-align: right; font-weight: bold;">₱${totalPaid}</td>
+                    </tr>
+                `;
             });
-            report += `\nEXPENSE DETAILS\n---------------\n`;
-            if (expenses.length === 0) { report += "No expenses recorded.\n"; } 
-            else { expenses.forEach(expense => { report += `${expense.date} - "${expense.description}": ₱${expense.amount.toFixed(2)}\n`; }); }
-            const blob = new Blob([report], { type: 'text/plain;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.setAttribute("href", URL.createObjectURL(blob));
-            link.setAttribute("download", `summary_report_${year}.txt`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-        
-        window.recordFullPayment = async function() {
-            const memberId = document.getElementById('memberSelect').value;
-            const year = document.getElementById('yearSelect').value;
-            if (!memberId) return alert('Please select a member');
-            const paymentKey = `payments_${year}`;
-            const fullYearPayments = Array(12).fill(true);
-            try {
-                const memberRef = doc(db, "members", memberId);
-                await updateDoc(memberRef, { [paymentKey]: fullYearPayments });
-                const memberName = Object.keys(members).find(name => members[name].id === memberId);
-                members[memberName][paymentKey] = fullYearPayments;
-                updateDisplay();
-                alert(`Full year payment recorded for the selected member.`);
-            } catch(e) { console.error("Error recording full payment: ", e); }
-        }
-    </script>
-</body>
-</html>
+            
+            exportHTML += `
+                            </tbody>
+                        </table>
+                    </div>
+            `;
+            
+            // Add expense history if there are expenses
+            if (expenses.length > 0) {
+                exportHTML += `
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
+                        <h2 style="color: #2c3e50; margin-top: 0;">Expense History</h2>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: #c0392b; color: white;">
+                                    <th style="padding: 10px; text-align: left;">Date</th>
+                                    <th style="padding: 10px; text-align: left;">Description</th>
+                                    <th style="padding: 10px; text-align: right;">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+                
+                expenses.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(expense => {
+                    exportHTML += `
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 10px;">${new Date(expense.date).toLocaleDateString('en-PH')}</td>
+                            <td style="padding: 10px;">${expense.description}</td>
+                            <td style="padding: 10px; text-align: right; font-weight: bold;">₱${expense.amount.toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+                
+                exportHTML += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+            
+            exportHTML += '</div>';
+            
+            exportDiv.innerHTML = exportHTML;
+            document.body.appendChild(exportDiv);
+            
+            // Capture the custom div
+            html2canvas(exportDiv, {
+                backgroundColor: 'white',
+                scale: 2,
+                logging: false
+            }).then(canvas => {
+                // Remove the temporary div
+                document.body.removeChild(exportDiv);
+                
+                // Convert to image and download
+                canvas.toBlob(function(blob) {
+                    const url = window.URL.createObjectURL
