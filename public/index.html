@@ -552,4 +552,63 @@
                 
                 // Convert to image and download
                 canvas.toBlob(function(blob) {
-                    const url = window.URL.createObjectURL
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.setAttribute('hidden', '');
+                    a.setAttribute('href', url);
+                    a.setAttribute('download', `church_ministry_report_${new Date().toISOString().split('T')[0]}.png`);
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                });
+            });
+        }
+
+        window.exportSummaryReport = function() {
+            const year = document.getElementById('yearSelect').value;
+            const currentDate = new Date().toLocaleDateString('en-PH');
+            let report = `MEN'S CHURCH MINISTRY - FINANCIAL REPORT\n`;
+            report += `Generated on: ${currentDate}\nReport for Year: ${year}\n${'='.repeat(50)}\n\n`;
+            report += `FINANCIAL SUMMARY\n-----------------\n`;
+            report += `Opening Balance: ₱${document.getElementById('summaryOpeningBalance').textContent}\n`;
+            report += `Total Collected from Contributions: ₱${document.getElementById('totalCollected').textContent}\n`;
+            report += `Total Expenses: ₱${document.getElementById('totalExpenses').textContent}\n`;
+            report += `Total Contribution: ₱${document.getElementById('totalContribution').textContent}\n`;
+            report += `Total Members: ${document.getElementById('totalMembers').textContent}\n\n`;
+            report += `MEMBER CONTRIBUTIONS\n--------------------\n`;
+            const paymentKey = `payments_${year}`;
+            Object.keys(members).sort().forEach(name => {
+                const paymentData = members[name][paymentKey] || Array(12).fill(false);
+                const monthsPaid = paymentData.filter(p => p).length;
+                report += `${name}: ${monthsPaid}/12 months paid (₱${monthsPaid * 100})\n`;
+            });
+            report += `\nEXPENSE DETAILS\n---------------\n`;
+            if (expenses.length === 0) { report += "No expenses recorded.\n"; } 
+            else { expenses.forEach(expense => { report += `${expense.date} - "${expense.description}": ₱${expense.amount.toFixed(2)}\n`; }); }
+            const blob = new Blob([report], { type: 'text/plain;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.setAttribute("href", URL.createObjectURL(blob));
+            link.setAttribute("download", `summary_report_${year}.txt`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        window.recordFullPayment = async function() {
+            const memberId = document.getElementById('memberSelect').value;
+            const year = document.getElementById('yearSelect').value;
+            if (!memberId) return alert('Please select a member');
+            const paymentKey = `payments_${year}`;
+            const fullYearPayments = Array(12).fill(true);
+            try {
+                const memberRef = doc(db, "members", memberId);
+                await updateDoc(memberRef, { [paymentKey]: fullYearPayments });
+                const memberName = Object.keys(members).find(name => members[name].id === memberId);
+                members[memberName][paymentKey] = fullYearPayments;
+                updateDisplay();
+                alert(`Full year payment recorded for the selected member.`);
+            } catch(e) { console.error("Error recording full payment: ", e); }
+        }
+    </script>
+</body>
+</html>
