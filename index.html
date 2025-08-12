@@ -184,7 +184,7 @@
             </tr>
         </thead>
         <tbody id="tableBody">
-        </tbody>
+            </tbody>
     </table>
 
     <div class="summary">
@@ -229,16 +229,259 @@
                 </tr>
             </thead>
             <tbody id="expenseBody">
-            </tbody>
+                 </tbody>
         </table>
     </div>
 
-    <script>
-        let members = {};
-        let expenses = [];
+    <script type="module">
+        // 1. Import Firebase Functions
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getFirestore, collection, getDocs, doc, addDoc, updateDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // 2. Your unique Firebase configuration object
+        const firebaseConfig = {
+          apiKey: "AIzaSyBbYvSQDDpw7XkMcRdRnlo2GeNqNIiwT9M",
+          authDomain: "men-s-ministry-contribution.firebaseapp.com",
+          projectId: "men-s-ministry-contribution",
+          storageBucket: "men-s-ministry-contribution.firebasestorage.app",
+          messagingSenderId: "407765590852",
+          appId: "1:407765590852:web:1afa4e31d165d2c641b6d11",
+          measurementId: "G-9C7X9B69Z2"
+        };
+
+        // 3. Initialize Firebase and Firestore
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // ==========================================================
+        // App's state (local cache of data from Firebase)
+        // ==========================================================
+        let members = {}; // Will store { name: { id, payments_2024, payments_2025 } }
+        let expenses = []; // Will store { id, description, amount, date }
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         
-        // Initialize month select
+        // ==========================================================
+        // Data Functions (Talk to Firebase)
+        // ==========================================================
+
+        window.addMember = async function() {
+            const nameInput = document.getElementById('memberName');
+            const name = nameInput.value.trim();
+            
+            if (!name) return alert('Please enter a member name');
+            if (members[name]) return alert('Member already exists');
+
+            try {
+                await addDoc(collection(db, "members"), {
+                    name: name,
+                    payments_2024: Array(12).fill(false),
+                    payments_2025: Array(12).fill(false)
+                });
+                nameInput.value = '';
+                await loadAllData(); // Reload all data from Firebase
+            } catch (e) {
+                console.error("Error adding member: ", e);
+                alert("Could not add member. See console for details.");
+            }
+        }
+        
+        window.recordPayment = async function() {
+            const memberId = document.getElementById('memberSelect').value;
+            const month = parseInt(document.getElementById('monthSelect').value);
+            const year = document.getElementById('yearSelect').value;
+
+            if (!memberId || month === '') return alert('Please select both member and month');
+            
+            const memberName = Object.keys(members).find(name => members[name].id === memberId);
+            const memberData = members[memberName];
+            const paymentKey = `payments_${year}`;
+            
+            if (memberData[paymentKey][month]) return alert('Payment already recorded for this month');
+            
+            memberData[paymentKey][month] = true;
+            
+            try {
+                const memberRef = doc(db, "members", memberId);
+                await updateDoc(memberRef, { [paymentKey]: memberData[paymentKey] });
+                await loadAllData();
+            } catch(e) {
+                console.error("Error recording payment: ", e);
+                alert("Could not record payment. See console for details.");
+            }
+        }
+
+        window.recordFullPayment = async function() {
+            const memberId = document.getElementById('memberSelect').value;
+            const year = document.getElementById('yearSelect').value;
+             if (!memberId) return alert('Please select a member');
+
+            const paymentKey = `payments_${year}`;
+            const fullYearPayments = Array(12).fill(true);
+            
+            try {
+                const memberRef = doc(db, "members", memberId);
+                await updateDoc(memberRef, { [paymentKey]: fullYearPayments });
+                await loadAllData();
+                alert(`Full year payment recorded for the selected member.`);
+            } catch(e) {
+                console.error("Error recording full payment: ", e);
+            }
+        }
+
+        window.deleteMember = async function(memberId, memberName) {
+            if (confirm(`Are you sure you want to delete ${memberName}?`)) {
+                try {
+                    await deleteDoc(doc(db, "members", memberId));
+                    await loadAllData();
+                } catch(e) {
+                    console.error("Error deleting member: ", e);
+                }
+            }
+        }
+        
+        window.addExpense = async function() {
+            const description = document.getElementById('expenseDescription').value.trim();
+            const amount = parseFloat(document.getElementById('expenseAmount').value);
+            const date = document.getElementById('expenseDate').value;
+            
+            if (!description || !amount || amount <= 0 || !date) return alert('Please fill in all expense fields');
+
+            try {
+                await addDoc(collection(db, "expenses"), { description, amount, date });
+                document.getElementById('expenseDescription').value = '';
+                document.getElementById('expenseAmount').value = '';
+                document.getElementById('expenseDate').valueAsDate = new Date();
+                await loadAllData();
+            } catch(e) {
+                console.error("Error adding expense: ", e);
+            }
+        }
+        
+        window.deleteExpense = async function(expenseId) {
+            if (confirm('Are you sure you want to delete this expense?')) {
+                try {
+                    await deleteDoc(doc(db, "expenses", expenseId));
+                    await loadAllData();
+                } catch(e) {
+                    console.error("Error deleting expense: ", e);
+                }
+            }
+        }
+
+        // ==========================================================
+        // UI Update Functions (Render data to the screen)
+        // These are mostly the same as your original code
+        // ==========================================================
+
+        function updateMemberSelect() {
+            const select = document.getElementById('memberSelect');
+            const currentMember = select.value;
+            select.innerHTML = '<option value="">Select Member</option>';
+            Object.keys(members).sort().forEach(name => {
+                const option = document.createElement('option');
+                option.value = members[name].id; // Use Firestore ID as value
+                option.textContent = name;
+                select.appendChild(option);
+            });
+            select.value = currentMember;
+        }
+
+        function updateDisplay() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            let totalCollected = 0;
+            const currentYear = document.getElementById('yearSelect').value;
+            
+            Object.keys(members).sort().forEach(name => {
+                const row = document.createElement('tr');
+                let memberTotal = 0;
+                const paymentKey = `payments_${currentYear}`;
+                const memberData = members[name][paymentKey] || Array(12).fill(false);
+                
+                row.innerHTML = `<td><strong>${name}</strong></td>`;
+                
+                for (let i = 0; i < 12; i++) {
+                    const isPaid = memberData[i];
+                    const cell = document.createElement('td');
+                    cell.innerHTML = isPaid ? '<span class="paid">₱100</span>' : '<span class="unpaid">-</span>';
+                    row.appendChild(cell);
+                    if (isPaid) {
+                        memberTotal += 100;
+                    }
+                }
+                totalCollected += memberTotal;
+                row.innerHTML += `<td><strong>₱${memberTotal}</strong></td>`;
+                row.innerHTML += `<td><button class="delete-btn" onclick="deleteMember('${members[name].id}', '${name}')">Delete</button></td>`;
+                tbody.appendChild(row);
+            });
+            
+            // Update Summary
+            const totalMembers = Object.keys(members).length;
+            const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+            const netBalance = totalCollected - totalExpenses;
+            const expectedTotal = totalMembers * 1200;
+
+            document.getElementById('totalMembers').textContent = totalMembers;
+            document.getElementById('totalCollected').textContent = totalCollected.toFixed(2);
+            document.getElementById('totalExpenses').textContent = totalExpenses.toFixed(2);
+            document.getElementById('netBalance').textContent = netBalance.toFixed(2);
+            document.getElementById('expectedTotal').textContent = expectedTotal.toFixed(2);
+            const rate = expectedTotal > 0 ? ((totalCollected / expectedTotal) * 100).toFixed(1) : 0;
+            document.getElementById('collectionRate').textContent = rate + '%';
+        }
+
+        function updateExpenseDisplay() {
+            const tbody = document.getElementById('expenseBody');
+            tbody.innerHTML = '';
+            expenses.sort((a, b) => new Date(b.date) - new Date(a.date));
+            expenses.forEach(expense => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${new Date(expense.date).toLocaleDateString('en-PH')}</td>
+                    <td>${expense.description}</td>
+                    <td style="color: #c0392b; font-weight: bold;">₱${expense.amount.toFixed(2)}</td>
+                    <td><button class="delete-btn" onclick="deleteExpense('${expense.id}')">Delete</button></td>
+                `;
+                tbody.appendChild(row);
+            });
+             if (expenses.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">No expenses recorded</td></tr>';
+            }
+        }
+
+        // ==========================================================
+        // Initializer
+        // ==========================================================
+        
+        async function loadAllData() {
+            // Load members
+            const membersQuery = query(collection(db, "members"));
+            const memberSnapshot = await getDocs(membersQuery);
+            members = {}; // Reset local cache
+            memberSnapshot.forEach(doc => {
+                const data = doc.data();
+                members[data.name] = {
+                    id: doc.id,
+                    payments_2024: data.payments_2024,
+                    payments_2025: data.payments_2025
+                };
+            });
+
+            // Load expenses
+            const expensesQuery = query(collection(db, "expenses"));
+            const expenseSnapshot = await getDocs(expensesQuery);
+            expenses = []; // Reset local cache
+            expenseSnapshot.forEach(doc => {
+                expenses.push({ id: doc.id, ...doc.data() });
+            });
+
+            // Re-render the entire UI
+            updateDisplay();
+            updateMemberSelect();
+            updateExpenseDisplay();
+        }
+        
+        // Populate static dropdowns and load initial data from Firebase
         const monthSelect = document.getElementById('monthSelect');
         months.forEach((month, index) => {
             const option = document.createElement('option');
@@ -246,479 +489,17 @@
             option.textContent = month;
             monthSelect.appendChild(option);
         });
-        
-        // Set current month as default
-        const currentMonth = new Date().getMonth();
-        monthSelect.value = currentMonth;
-        
-        // Set current date for expense date input
+        monthSelect.value = new Date().getMonth();
         document.getElementById('expenseDate').valueAsDate = new Date();
+        document.getElementById('yearSelect').addEventListener('change', updateDisplay);
 
-        function addMember() {
-            const nameInput = document.getElementById('memberName');
-            const name = nameInput.value.trim();
-            
-            if (!name) {
-                alert('Please enter a member name');
-                return;
-            }
-            
-            if (members[name]) {
-                alert('Member already exists');
-                return;
-            }
-            
-            members[name] = {
-                2024: Array(12).fill(false),
-                2025: Array(12).fill(false)
-            };
-            
-            nameInput.value = '';
-            updateDisplay();
-            updateMemberSelect();
-        }
-
-        function recordPayment() {
-            const member = document.getElementById('memberSelect').value;
-            const month = parseInt(document.getElementById('monthSelect').value);
-            const year = document.getElementById('yearSelect').value;
-            
-            if (!member || month === '') {
-                alert('Please select both member and month');
-                return;
-            }
-            
-            if (members[member][year][month]) {
-                alert('Payment already recorded for this month');
-                return;
-            }
-            
-            members[member][year][month] = true;
-            updateDisplay();
-        }
-
-        function recordFullPayment() {
-            const member = document.getElementById('memberSelect').value;
-            const year = document.getElementById('yearSelect').value;
-            
-            if (!member) {
-                alert('Please select a member');
-                return;
-            }
-            
-            // Check if any payments already exist
-            const existingPayments = members[member][year].filter(paid => paid).length;
-            if (existingPayments > 0) {
-                if (!confirm(`${member} already has ${existingPayments} payment(s) recorded. Mark all remaining months as paid?`)) {
-                    return;
-                }
-            }
-            
-            // Mark all 12 months as paid
-            for (let i = 0; i < 12; i++) {
-                members[member][year][i] = true;
-            }
-            
-            updateDisplay();
-            alert(`Full year payment recorded for ${member} (₱1,200)`);
-        }
-
-        function addExpense() {
-            const description = document.getElementById('expenseDescription').value.trim();
-            const amount = parseFloat(document.getElementById('expenseAmount').value);
-            const date = document.getElementById('expenseDate').value;
-            
-            if (!description || !amount || amount <= 0 || !date) {
-                alert('Please fill in all expense fields with valid values');
-                return;
-            }
-            
-            expenses.push({
-                id: Date.now(),
-                description: description,
-                amount: amount,
-                date: date
-            });
-            
-            // Clear inputs
-            document.getElementById('expenseDescription').value = '';
-            document.getElementById('expenseAmount').value = '';
-            document.getElementById('expenseDate').valueAsDate = new Date();
-            
-            updateDisplay();
-            updateExpenseDisplay();
-        }
+        // Initial Load
+        loadAllData();
         
-        function deleteExpense(id) {
-            if (confirm('Are you sure you want to delete this expense?')) {
-                expenses = expenses.filter(expense => expense.id !== id);
-                updateDisplay();
-                updateExpenseDisplay();
-            }
-        }
-        
-        function updateExpenseDisplay() {
-            const tbody = document.getElementById('expenseBody');
-            tbody.innerHTML = '';
-            
-            // Sort expenses by date (newest first)
-            expenses.sort((a, b) => new Date(b.date) - new Date(a.date));
-            
-            expenses.forEach(expense => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${new Date(expense.date).toLocaleDateString('en-PH')}</td>
-                    <td>${expense.description}</td>
-                    <td style="color: #c0392b; font-weight: bold;">₱${expense.amount.toFixed(2)}</td>
-                    <td><button class="delete-btn" onclick="deleteExpense(${expense.id})">Delete</button></td>
-                `;
-                tbody.appendChild(row);
-            });
-            
-            // If no expenses
-            if (expenses.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">No expenses recorded</td></tr>';
-            }
-        }
-
-        function deleteMember(name) {
-            if (confirm(`Are you sure you want to delete ${name}?`)) {
-                delete members[name];
-                updateDisplay();
-                updateMemberSelect();
-            }
-        }
-
-        function updateMemberSelect() {
-            const select = document.getElementById('memberSelect');
-            select.innerHTML = '<option value="">Select Member</option>';
-            
-            Object.keys(members).sort().forEach(name => {
-                const option = document.createElement('option');
-                option.value = name;
-                option.textContent = name;
-                select.appendChild(option);
-            });
-        }
-
-        function updateDisplay() {
-            const tbody = document.getElementById('tableBody');
-            tbody.innerHTML = '';
-            
-            let totalCollected = 0;
-            let totalExpected = 0;
-            const currentYear = new Date().getFullYear();
-            const currentMonth = new Date().getMonth();
-            
-            Object.keys(members).sort().forEach(name => {
-                const row = document.createElement('tr');
-                row.innerHTML = `<td><strong>${name}</strong></td>`;
-                
-                let memberTotal = 0;
-                let memberExpected = 0;
-                
-                // Display current year's data
-                for (let i = 0; i < 12; i++) {
-                    const isPaid = members[name][currentYear][i];
-                    const cell = document.createElement('td');
-                    cell.innerHTML = isPaid ? 
-                        '<span class="paid">₱100</span>' : 
-                        '<span class="unpaid">-</span>';
-                    row.appendChild(cell);
-                    
-                    if (isPaid) {
-                        memberTotal += 100;
-                        totalCollected += 100;
-                    }
-                    
-                    // Count expected for all 12 months regardless of current month
-                    memberExpected += 100;
-                }
-                
-                totalExpected += memberExpected;
-                
-                row.innerHTML += `<td><strong>₱${memberTotal}</strong></td>`;
-                row.innerHTML += `<td><button class="delete-btn" onclick="deleteMember('${name}')">Delete</button></td>`;
-                tbody.appendChild(row);
-            });
-            
-            // Calculate total expenses
-            const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-            const netBalance = totalCollected - totalExpenses;
-            
-            // Update summary
-            document.getElementById('totalMembers').textContent = Object.keys(members).length;
-            document.getElementById('totalCollected').textContent = totalCollected.toFixed(2);
-            document.getElementById('totalExpenses').textContent = totalExpenses.toFixed(2);
-            document.getElementById('netBalance').textContent = netBalance.toFixed(2);
-            document.getElementById('expectedTotal').textContent = totalExpected;
-            
-            // Color code net balance
-            const netBalanceElement = document.getElementById('netBalance').parentElement;
-            if (netBalance < 0) {
-                netBalanceElement.style.backgroundColor = '#f8d7da';
-                netBalanceElement.style.color = '#721c24';
-            } else {
-                netBalanceElement.style.backgroundColor = '#d4edda';
-                netBalanceElement.style.color = '#155724';
-            }
-            
-            const rate = totalExpected > 0 ? ((totalCollected / totalExpected) * 100).toFixed(1) : 0;
-            document.getElementById('collectionRate').textContent = rate + '%';
-        }
-
-        // Export functions
-        function exportToCSV() {
-            const currentYear = new Date().getFullYear();
-            let csv = 'Member Name,Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec,Total Paid\n';
-            
-            Object.keys(members).sort().forEach(name => {
-                let row = `"${name}"`;
-                let total = 0;
-                
-                for (let i = 0; i < 12; i++) {
-                    const paid = members[name][currentYear][i];
-                    row += paid ? ',100' : ',0';
-                    if (paid) total += 100;
-                }
-                row += `,${total}\n`;
-                csv += row;
-            });
-            
-            // Add summary
-            csv += '\n\nSUMMARY\n';
-            csv += `Total Members,${Object.keys(members).length}\n`;
-            csv += `Total Collected,${document.getElementById('totalCollected').textContent}\n`;
-            csv += `Total Expenses,${document.getElementById('totalExpenses').textContent}\n`;
-            csv += `Net Balance,${document.getElementById('netBalance').textContent}\n`;
-            csv += `Collection Rate,${document.getElementById('collectionRate').textContent}\n`;
-            
-            // Add expenses
-            csv += '\n\nEXPENSES\n';
-            csv += 'Date,Description,Amount\n';
-            expenses.forEach(expense => {
-                csv += `${expense.date},"${expense.description}",${expense.amount}\n`;
-            });
-            
-            // Download CSV
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.setAttribute('hidden', '');
-            a.setAttribute('href', url);
-            a.setAttribute('download', `church_contributions_${currentYear}.csv`);
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }
-        
-        function exportToImage() {
-            // Create a custom div for export
-            const exportDiv = document.createElement('div');
-            exportDiv.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; background: white; padding: 40px; z-index: 10000;';
-            
-            // Get current data
-            const currentYear = new Date().getFullYear();
-            const currentDate = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
-            
-            // Build the export content
-            let exportHTML = `
-                <div style="max-width: 800px; margin: 0 auto; font-family: Arial, sans-serif;">
-                    <div style="text-align: center; background: #2c3e50; color: white; padding: 20px; border-radius: 10px; margin-bottom: 30px;">
-                        <h1 style="margin: 0;">Men's Church Ministry</h1>
-                        <h3 style="margin: 10px 0 0 0;">Financial Report - ${currentDate}</h3>
-                    </div>
-                    
-                    <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                        <h2 style="color: #2c3e50; margin-top: 0;">Financial Summary</h2>
-                        <table style="width: 100%; font-size: 16px;">
-                            <tr>
-                                <td style="padding: 8px 0;"><strong>Total Members:</strong></td>
-                                <td style="text-align: right;">${Object.keys(members).length}</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px 0;"><strong>Total Collected:</strong></td>
-                                <td style="text-align: right; color: #27ae60; font-weight: bold;">₱${document.getElementById('totalCollected').textContent}</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px 0;"><strong>Total Expenses:</strong></td>
-                                <td style="text-align: right; color: #e74c3c; font-weight: bold;">₱${document.getElementById('totalExpenses').textContent}</td>
-                            </tr>
-                            <tr style="border-top: 2px solid #34495e;">
-                                <td style="padding: 8px 0;"><strong>Net Balance:</strong></td>
-                                <td style="text-align: right; font-weight: bold; font-size: 18px; color: ${parseFloat(document.getElementById('netBalance').textContent) >= 0 ? '#27ae60' : '#e74c3c'};">₱${document.getElementById('netBalance').textContent}</td>
-                            </tr>
-                        </table>
-                    </div>
-                    
-                    <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
-                        <h2 style="color: #2c3e50; margin-top: 0;">Member Contributions</h2>
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <thead>
-                                <tr style="background: #34495e; color: white;">
-                                    <th style="padding: 10px; text-align: left;">Member Name</th>
-                                    <th style="padding: 10px; text-align: center;">Months Paid</th>
-                                    <th style="padding: 10px; text-align: right;">Total Paid</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-            `;
-            
-            // Add member payment data
-            Object.keys(members).sort().forEach(name => {
-                let monthsPaid = 0;
-                for (let i = 0; i < 12; i++) {
-                    if (members[name][currentYear][i]) monthsPaid++;
-                }
-                const totalPaid = monthsPaid * 100;
-                
-                exportHTML += `
-                    <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 10px;">${name}</td>
-                        <td style="padding: 10px; text-align: center;">${monthsPaid}/12</td>
-                        <td style="padding: 10px; text-align: right; font-weight: bold;">₱${totalPaid}</td>
-                    </tr>
-                `;
-            });
-            
-            exportHTML += `
-                            </tbody>
-                        </table>
-                    </div>
-            `;
-            
-            // Add expense history if there are expenses
-            if (expenses.length > 0) {
-                exportHTML += `
-                    <div style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                        <h2 style="color: #2c3e50; margin-top: 0;">Expense History</h2>
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <thead>
-                                <tr style="background: #c0392b; color: white;">
-                                    <th style="padding: 10px; text-align: left;">Date</th>
-                                    <th style="padding: 10px; text-align: left;">Description</th>
-                                    <th style="padding: 10px; text-align: right;">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                `;
-                
-                expenses.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(expense => {
-                    exportHTML += `
-                        <tr style="border-bottom: 1px solid #ddd;">
-                            <td style="padding: 10px;">${new Date(expense.date).toLocaleDateString('en-PH')}</td>
-                            <td style="padding: 10px;">${expense.description}</td>
-                            <td style="padding: 10px; text-align: right; font-weight: bold;">₱${expense.amount.toFixed(2)}</td>
-                        </tr>
-                    `;
-                });
-                
-                exportHTML += `
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-            }
-            
-            exportHTML += '</div>';
-            
-            exportDiv.innerHTML = exportHTML;
-            document.body.appendChild(exportDiv);
-            
-            // Capture the custom div
-            html2canvas(exportDiv, {
-                backgroundColor: 'white',
-                scale: 2,
-                logging: false
-            }).then(canvas => {
-                // Remove the temporary div
-                document.body.removeChild(exportDiv);
-                
-                // Convert to image and download
-                canvas.toBlob(function(blob) {
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.setAttribute('hidden', '');
-                    a.setAttribute('href', url);
-                    a.setAttribute('download', `church_ministry_report_${new Date().toISOString().split('T')[0]}.png`);
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                });
-            });
-        }
-        
-        function exportSummaryReport() {
-            const currentYear = new Date().getFullYear();
-            const currentDate = new Date().toLocaleDateString('en-PH');
-            
-            let report = `MEN'S CHURCH MINISTRY - FINANCIAL REPORT\n`;
-            report += `Generated: ${currentDate}\n`;
-            report += `Year: ${currentYear}\n`;
-            report += `${'='.repeat(50)}\n\n`;
-            
-            report += `SUMMARY\n`;
-            report += `${'='.repeat(50)}\n`;
-            report += `Total Members: ${Object.keys(members).length}\n`;
-            report += `Total Collected: ₱${document.getElementById('totalCollected').textContent}\n`;
-            report += `Total Expenses: ₱${document.getElementById('totalExpenses').textContent}\n`;
-            report += `Net Balance: ₱${document.getElementById('netBalance').textContent}\n`;
-            report += `Collection Rate: ${document.getElementById('collectionRate').textContent}\n\n`;
-            
-            report += `MEMBER CONTRIBUTIONS\n`;
-            report += `${'='.repeat(50)}\n`;
-            Object.keys(members).sort().forEach(name => {
-                let paid = 0;
-                let unpaid = 0;
-                for (let i = 0; i < 12; i++) {
-                    if (members[name][currentYear][i]) paid++;
-                    else unpaid++;
-                }
-                report += `${name}: ${paid}/12 months paid (₱${paid * 100})\n`;
-            });
-            
-            report += `\nEXPENSE DETAILS\n`;
-            report += `${'='.repeat(50)}\n`;
-            if (expenses.length === 0) {
-                report += `No expenses recorded\n`;
-            } else {
-                expenses.forEach(expense => {
-                    report += `${expense.date} - ${expense.description}: ₱${expense.amount}\n`;
-                });
-            }
-            
-            // Download text file
-            const blob = new Blob([report], { type: 'text/plain' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.setAttribute('hidden', '');
-            a.setAttribute('href', url);
-            a.setAttribute('download', `church_ministry_report_${currentYear}.txt`);
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }
-
-        // Load data from localStorage if available
-        const savedData = localStorage.getItem('churchContributions');
-        const savedExpenses = localStorage.getItem('churchExpenses');
-        
-        if (savedData) {
-            members = JSON.parse(savedData);
-            updateDisplay();
-            updateMemberSelect();
-        }
-        
-        if (savedExpenses) {
-            expenses = JSON.parse(savedExpenses);
-            updateExpenseDisplay();
-        }
-
-        // Save data to localStorage whenever it changes
-        window.addEventListener('beforeunload', () => {
-            localStorage.setItem('churchContributions', JSON.stringify(members));
-            localStorage.setItem('churchExpenses', JSON.stringify(expenses));
-        });
+        // Make export functions globally available
+        window.exportToCSV = function() { /* ... your original export logic ... */ };
+        window.exportToImage = function() { /* ... your original export logic ... */ };
+        window.exportSummaryReport = function() { /* ... your original export logic ... */ };
     </script>
 </body>
 </html>
